@@ -1,92 +1,92 @@
 ------------------------------------------------------------
--- Article : EBX_HCCDimLabel
--- Type   : Table (U)
+-- Article : <ARTICLE_001>
+-- Table   : <TABLE_001>
 ------------------------------------------------------------
-USE [MOIRAREC];
+USE [<DATABASE_NAME>];
 
--- Désactivation de l’anonymous access et immediate_sync
+-- Mise à jour des propriétés de la publication
 EXEC sp_changepublication  
-     @publication = 'Repl_MOIRAREC_Azure',
+     @publication = '<PUBLICATION_NAME>',
      @property    = 'allow_anonymous',
      @value       = 'false';
 
 EXEC sp_changepublication  
-     @publication = 'Repl_MOIRAREC_Azure',
+     @publication = '<PUBLICATION_NAME>',
      @property    = 'immediate_sync',
      @value       = 'false';
 
--- Ajout de l’article EBX_HCCDimLabel
+-- Ajout de l’article <ARTICLE_001>
 EXEC sp_addarticle 
-     @publication                  = 'Repl_MOIRAREC_Azure',
-     @article                      = 'EBX_HCCDimLabel',
-     @source_owner                 = N'dbo',
-     @source_object                = 'EBX_HCCDimLabel',
-     @force_invalidate_snapshot    = 1,
-     @type                         = N'logbased',
-     @description                  = N'',
-     @creation_script              = N'',
-     @pre_creation_cmd             = N'drop',
-     @schema_option                = 0x000000000803409F,
-     @identityrangemanagementoption= N'none',
-     @destination_table            = 'EBX_HCCDimLabel',
-     @destination_owner            = N'dbo',
-     @status                       = 24,
-     @vertical_partition           = N'false',
-     @ins_cmd                      = N'CALL [sp_MSins_dboEBX_HCCDimLabel]',
-     @del_cmd                      = N'CALL [sp_MSdel_dboEBX_HCCDimLabel]',
-     @upd_cmd                      = N'SCALL [sp_MSupd_dboEBX_HCCDimLabel]';
+     @publication                   = '<PUBLICATION_NAME>',
+     @article                       = '<ARTICLE_001>',
+     @source_owner                  = N'dbo',
+     @source_object                 = '<TABLE_001>',
+     @force_invalidate_snapshot     = 1,
+     @type                          = N'logbased',
+     @description                   = N'',
+     @creation_script               = N'',
+     @pre_creation_cmd              = N'drop',
+     @schema_option                 = 0x000000000803409F,
+     @identityrangemanagementoption = N'none',
+     @destination_table             = '<TABLE_001>',
+     @destination_owner             = N'dbo',
+     @status                        = 24,
+     @vertical_partition            = N'false',
+     @ins_cmd                       = N'CALL [sp_MSins_dbo<TABLE_001>]',
+     @del_cmd                       = N'CALL [sp_MSdel_dbo<TABLE_001>]',
+     @upd_cmd                       = N'SCALL [sp_MSupd_dbo<TABLE_001>]';
 
 
 ------------------------------------------------------------
--- Article : EBX_ThirdPartyAccountParamCarrierGroup
--- Type   : Table (U)
+-- Article : <ARTICLE_002>
+-- Table   : <TABLE_002>
 ------------------------------------------------------------
-USE [MOIRAREC];
+USE [<DATABASE_NAME>];
 
--- Désactivation de l’anonymous access et immediate_sync
+-- Mise à jour des propriétés de la publication
 EXEC sp_changepublication  
-     @publication = 'Repl_MOIRAREC_Azure',
+     @publication = '<PUBLICATION_NAME>',
      @property    = 'allow_anonymous',
      @value       = 'false';
 
 EXEC sp_changepublication  
-     @publication = 'Repl_MOIRAREC_Azure',
+     @publication = '<PUBLICATION_NAME>',
      @property    = 'immediate_sync',
      @value       = 'false';
 
--- Ajout de l’article EBX_ThirdPartyAccountParamCarrierGroup
+-- Ajout de l’article <ARTICLE_002>
 EXEC sp_addarticle 
-     @publication                  = 'Repl_MOIRAREC_Azure',
-     @article                      = 'EBX_ThirdPartyAccountParamCarrierGroup',
-     @source_owner                 = N'dbo',
-     @source_object                = 'EBX_ThirdPartyAccountParamCarrierGroup',
-     @force_invalidate_snapshot    = 1,
-     @type                         = N'logbased',
-     @description                  = N'',
-     @creation_script              = N'',
-     @pre_creation_cmd             = N'drop',
-     @schema_option                = 0x000000000803409F,
-     @identityrangemanagementoption= N'none',
-     @destination_table            = 'EBX_ThirdPartyAccountParamCarrierGroup',
-     @destination_owner            = N'dbo',
-     @status                       = 24,
-     @vertical_partition           = N'false',
-     @ins_cmd                      = N'CALL [sp_MSins_dboEBX_ThirdPartyAccountParamCarrierGroup]',
-     @del_cmd                      = N'CALL [sp_MSdel_dboEBX_ThirdPartyAccountParamCarrierGroup]',
-     @upd_cmd                      = N'SCALL [sp_MSupd_dboEBX_ThirdPartyAccountParamCarrierGroup]';
+     @publication                   = '<PUBLICATION_NAME>',
+     @article                       = '<ARTICLE_002>',
+     @source_owner                  = N'dbo',
+     @source_object                 = '<TABLE_002>',
+     @force_invalidate_snapshot     = 1,
+     @type                          = N'logbased',
+     @description                   = N'',
+     @creation_script               = N'',
+     @pre_creation_cmd              = N'drop',
+     @schema_option                 = 0x000000000803409F,
+     @identityrangemanagementoption = N'none',
+     @destination_table             = '<TABLE_002>',
+     @destination_owner             = N'dbo',
+     @status                        = 24,
+     @vertical_partition            = N'false',
+     @ins_cmd                       = N'CALL [sp_MSins_dbo<TABLE_002>]',
+     @del_cmd                       = N'CALL [sp_MSdel_dbo<TABLE_002>]',
+     @upd_cmd                       = N'SCALL [sp_MSupd_dbo<TABLE_002>]';
 
 
 ------------------------------------------------------------
 -- Rafraîchissement des abonnements et génération du snapshot
 ------------------------------------------------------------
-EXEC sp_refreshsubscriptions @publication = 'Repl_MOIRAREC_Azure';
-EXEC sp_startpublication_snapshot @publication = 'Repl_MOIRAREC_Azure';
+EXEC sp_refreshsubscriptions @publication = '<PUBLICATION_NAME>';
+EXEC sp_startpublication_snapshot @publication = '<PUBLICATION_NAME>';
 
 -- Vérification des abonnements
 EXEC sp_helpsubscription 
-     @article      = 'EBX_HCCDimLabel',
-     @publication  = 'Repl_MOIRAREC_Azure';
+     @article      = '<ARTICLE_001>',
+     @publication  = '<PUBLICATION_NAME>';
 
 EXEC sp_helpsubscription 
-     @article      = 'EBX_ThirdPartyAccountParamCarrierGroup',
-     @publication  = 'Repl_MOIRAREC_Azure';
+     @article      = '<ARTICLE_002>',
+     @publication  = '<PUBLICATION_NAME>';
