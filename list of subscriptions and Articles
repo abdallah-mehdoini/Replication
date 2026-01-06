@@ -1,0 +1,16 @@
+-- Source - https://stackoverflow.com/a
+-- Posted by davmos
+-- Retrieved 2026-01-06, License - CC BY-SA 3.0
+
+SELECT 
+  msp.publication AS PublicationName,
+  msa.publisher_db AS DatabaseName,
+  msa.article AS ArticleName,
+  msa.source_owner AS SchemaName,
+  msa.source_object AS TableName
+FROM distribution.dbo.MSarticles msa
+JOIN distribution.dbo.MSpublications msp ON msa.publication_id = msp.publication_id
+--where  msa.article like '%EBX_HCCServiceElt'
+ORDER BY 
+  msp.publication, 
+  msa.article
