@@ -1,0 +1,367 @@
+
+--At the event of SQLSaturday Dallas 2018, it was a great honor to present this new feature that allows you to put Distribution_B database in AlwaysOn AG. The slide deck for the session can be downloaded at http://www.sqlsaturday.com/SessionDownload.aspx?suid=20757. As many audience requested, I am writing this blog to share the demo scripts, enjoy! 
+--Notes: The feature was released with SQL Server 2017 CU6 on 4/20/2018, it will also be back ported to future CUs for SQL Server 2016 SP2 The feature now is also available in SQL Server 2016 SP2+CU3.
+--In SQL 2017 + CU6, in order to support Distributor database in AG, there are a few highlights as below:
+--Remote Distributor required
+--Distribution_B database AG needs a listener
+--Replication jobs use the distributor listener
+--A new job created to monitor distributor AG state
+--Synchronous mode is recommended and preferred
+--Transactional replication with immediate or queued updating subscriber is not supported
+--P2P, Merge, Heterogeneous, Bi-directional TR not supported
+--Configure by script only
+--Must be new replication, existing Distribution_B db not supported
+--For the full list of supported/un-supported scenarios, please refer to -- https://docs.microsoft.com/en-us/sql/relational-databases/replication/configure-Distribution_B-availability-group?view=sql-server-2017
+--This demo is to show you how to configure the Distribution_B database in AlwaysOn AG step by step, the demo environment:
+--SQL Server 2017 RTM + CU6 Build# 14.0.3025.34
+
+--Distributor in AG (BFRDT1CLU069VM\REPLI & BFRDT2CLU069VM\REPLI)
+--Publisher in AG (Publisher A & Publisher B) 
+--Subscriber (listener_Subscriber)
+
+--The goal in this demo is to make the transactional replication topology like this visually:
+
+ 
+--Below is the scripts including comments that can help understand the whole process, BTW, the script is written in SQLCMD mode, so, make sure you set SSMS in SQLCMD mode before you play with the script in your testing/dev environment.
+--Important: All scripts/procedures provided here is for demo purpose only. Although it is tested in my lab, please read and test it thoroughly before you apply this to your system.
+
+-- SECTION 1 ---- CONFIGURE THE DISTRIBUTOR SERVERS
+---Distributor A
+---Distributor B
+---Publisher A
+---Publisher B
+---listener_Subscriber  
+
+:Connect Distributor A
+IF EXISTS(SELECT TOP(1) publisher_database_id from Distribution.[dbo].[MSrepl_transactions] with(nolock)
+WHERE entry_time > DATEADD(HOUR,-4,getdate()))
+BEGIN 
+RAISERROR ('WARNING Before to continue you need to FAILOVER the Availibility Group ON BFRDT1CLU069VM\REPLI', 11, 1);
+END
+ELSE(
+IF EXISTS
+	(SELECT replica_server_name ,role_desc, is_local , operational_state_desc from sys.dm_hadr_availability_replica_cluster_states  c
+	 INNER JOIN sys.dm_hadr_availability_replica_states r
+	 ON r.replica_id =c.replica_id 
+	 WHERE is_local=1
+	 and role_desc = 'SECONDARY'
+	)
+	ALTER AVAILABILITY GROUP [AG_COPRSQLDIST] FAILOVER;
+)
+GO
+
+exec sp_dropdistributor @no_checks = 1
+
+-- Step1 - Configure the Distribution_B DB nodes (AG Replicas) to act as a distributor
+:Connect Distributor A
+sp_adddistributor  @distributor=  'Distributor A'   
+    ,  @password=  'jP5ZsTk2@36mN12'
+Go
+:Connect Distributor B
+sp_adddistributor  @distributor=  'Distributor B'   
+    ,  @password=  'jP5ZsTk2@36mN12'
+Go
+ 
+-- Step2 - Configure the Distribution_B Database
+:Connect Distributor A
+use master
+GO
+exec sp_adddistributiondb @database = N'distribution',
+@data_folder = N'D:\MSSQL15.REPLI\MSSQL\DATA',
+@data_file = N'distribution.MDF', @data_file_size = 50,
+@log_folder = N'L:\MSSQL15.REPLI\MSSQL\Log',
+@log_file = N'distribution.LDF', @log_file_size = 10,
+@min_distretention = 0, @max_distretention = 72, @history_retention = 48,
+@deletebatchsize_xact = 5000, @deletebatchsize_cmd = 2000,
+@security_mode = 1
+GO
+Alter Database distribution set recovery Full
+GO
+
+
+
+ALTER AVAILABILITY GROUP [BFRCSICLU070AGR]
+ADD DATABASE [Distribution]
+GO
+ 
+-- STEP 5 - Enable BFRDT2CLU069VM\REPLI also as a Distributor --NOK --normally already in place via Always On Seed option
+:CONNECT Distributor B
+EXEC sp_addDistributiondb @database= 'Distribution', @data_folder='D:\Program Files\Microsoft SQL Server\MSSQL15.REPLI\MSSQL\Data', 
+@log_folder='L:\Program Files\Microsoft SQL Server\MSSQL15.REPLI\MSSQL\Data' ,
+@security_mode =0 ,@login='distributor_admin' ,@Password='jP5ZsTk2@36mN12'
+ 
+ 
+--STEP 6 - On all Distributor Nodes Configure the Publisher Details
+-- ******@Publisher is the current primary replca of the publisher, we will set redirect publisher to Publisher's listener in the end******-------------
+:CONNECT CONNECT Distributor B
+EXEC sp_addDistPublisher @publisher = 'BFRDT1CLU070VM\ARIANEREP', @Distribution_db = 'Distribution',@security_mode=0,
+@login='distributor_admin' ,@Password='jP5ZsTk2@36mN12',
+@working_directory = '\\BFRDT2CLU070VM\snapshot\'
+EXEC sp_helpdistpublisher
+GO
+ 
+:CONNECT Distributor A
+--sp_helpdistpublisher
+EXEC sp_addDistPublisher @publisher = 'BFRDT2CLU070VM\ARIANEREP', @Distribution_db = 'Distribution',@security_mode=0,
+@login='distributor_admin' ,@Password='jP5ZsTk2@36mN12',
+@working_directory = '\\BFRDT2CLU070VM\snapshot\'
+EXEC sp_helpdistpublisher
+GO
+ 
+-- ******@Publisher is the current secondary replca of the publisher, we will set redirect publisher to Publisher's listener in the end******-------------
+-- ******because after failover, the secondary replica of the publisher can also be a publisher to use the Distribution_B******
+:CONNECT Publisher A
+EXEC sp_addDistPublisher @publisher = 'BFRDT2CLU070VM\ARIANEREP', @Distribution_db = 'Distribution',@security_mode=0,
+@login='distributor_admin' ,@Password='jP5ZsTk2@36mN12',
+@working_directory = '\\BFRDT2CLU070VM\snapshot\'
+GO
+ 
+:CONNECT  Publisher B
+EXEC sp_addDistPublisher @publisher = 'BFRDT1CLU070VM\ARIANEREP', @Distribution_db = 'Distribution',@security_mode=0,
+@login='distributor_admin' ,@Password='jP5ZsTk2@36mN12',
+@working_directory = '\\BFRDT2CLU070VM\snapshot\'
+GO
+ 
+--sp_helpdistpublisher
+ 
+
+-- SECTION 2 ---- CONFIGURE THE PUBLISHER SERVER ON ALL PUBLISHER NODES--OK
+:CONNECT Publisher A
+--sp_helpdistributor
+EXEC sp_addDistributor @distributor = 'BFRCSICLU070AGR', -- Listener for the Distribution_B DB.
+@password = 'jP5ZsTk2@36mN12'
+Go
+ 
+
+:CONNECT Publisher B
+EXEC sp_addDistributor @distributor = 'BFRCSICLU070AGR', -- Listener for the Distribution_B DB.
+@password = 'jP5ZsTk2@36mN12'
+Go
+ 
+--sp_helpdistributor
+
+ 
+-- SECTION 3 ---- CONFIGURE Distribution_B DATABASE FULL/LOG BACKUP PLAN
+
+-- ***Make sure Distribution_B database has Full and T-log backup scheduled since it is in FULL recovery mode ***--
+:Connect Distributor B
+EXEC sp_addlinkedserver   
+   @server = 'BFRCSICLU070AG,50007';
+   
+: Connect Distributor A
+EXEC sp_addlinkedserver   
+      @server = 'BFRCSICLU070AG,50007'
+;;
+   
+-- On Publisher's primary replca, Only In primary Repli 
+:CONNECT Publisher A
+USE master;
+GO
+EXEC sys.sp_replicationdboption
+@dbname = 'Arianerep',
+@optname = 'publish',  --this is for transactional replication
+@value = 'true';  
+ 
+-- On primary Publisher BFRDT2CLU011PH, create the publication using script that you previously saved as below
+-- created publication Traceability_Pub
+-- You can script out your existing publication, here is just an example script that only contains 4 articles
+-- execute the script to create the publication on BFRDT2CLU011PH
+-- create publication Traceability_Pub on the primary replica BFRDT2CLU011PH
+BEGIN 
+RAISERROR ('WARNING Before to continue you need to deploy all replication on publisher server', 11, 1);
+END 
+
+
+-- SECTION 4.2 ---- CONTINUE TO CONFIGURE THE PUBLICATION
+-- check the publication
+:CONNECT Publisher B  -U Distributor_admin -P $123Bollore!
+use [ARIANEREP]
+EXEC sp_helppublication 
+ 
+
+-- SECTION 5 ---- CREATE THE SUBSCRIPTION 
+-- execute the script to create subscription on the publisher BFRDT2CLU011PH
+-- Sometimes you may use @sync_type = N'replication support only'
+-- Créer la base vide dans l'abonné 
+BEGIN 
+RAISERROR ('WARNING Before to continue you need to deploy all replication script to add Subscriber 
+server', 11, 1);
+END 
+
+
+----------------------------CONFIGURE DISTRIBUTOR IN AG COMPLETED------------------------------
+----------STOP HERE AT THIS POINT, TEST DISTRIBUTOR IN AG AND STANDALONE PUBLISHER-------------
+ 
+/*
+Distributor in AG (BFRDT1CLU069VM\REPLI & BFRDT2CLU069VM\REPLI)
+BFRDT2CLU011PH is the standalone publisher
+COPRSQLTRA is the subscriber
+*/
+--update 1 table
+--watch result in publisher and subscriber for the same table
+
+ 
+-- check if the transaction and command is replicated to the secondary distributor replica
+:connect Distributor A
+use Distribution_B
+select * from [dbo].[MSrepl_transactions] with(nolock)
+select * from [dbo].[MSrepl_commands] with(nolock)
+--where xact_seqno = 0x0000005300001A08001C
+:connect Distributor B
+use Distribution_B
+select * from [dbo].[MSrepl_transactions] with(nolock)
+select * from [dbo].[MSrepl_commands] with(nolock)
+--where xact_seqno = 0x0000005300001A08001C
+ 
+
+-- Failover Distributor AG  and Test the above table update again
+-- 1. Failover Ditributor AG
+:Connect Distributor A
+ALTER AVAILABILITY GROUP [AG_COPRSQLDIST] FAILOVER;
+GO
+ 
+-- 2. Watch jobs on Distributor are disabled and enabled on different replicas automatically as expected (may take a min)
+ 
+-- 3. Test the above table update again and watch if result is all good
+
+--update 1 table
+
+--watch result in publisher and subscriber for the same table
+ 
+-- 4. Failover back to BFRDT1CLU069VM\REPLI as primary Distributor replica
+
+:Connect Distributor B
+ALTER AVAILABILITY GROUP [AG_COPRSQLDIST] FAILOVER;
+GO
+-- 5. Wait a min or two, the jobs should be refreshed again as expected
+ 
+ 
+ 
+------------------TEST DISTRIBUTOR IN AG AND STANDALONE PUBLISHER COMPLETED-----------------------
+ --create procedure with stop and start good job for failover
+
+---------------IF THE ABOVE TEST SUCCESSFUL, CONTINUE TO CONFIGURE PUBLISHER IN AG----------------
+ 
+ 
+ 
+-- SECTION 6 ---- ***CONFIGURE THE PUBLISHER DB AG AND PUBLISHER LISTENER***
+-- Backup publisher database Traceability on BFRDT2CLU011PH and restore it on Secondary on BFRDT1CLU011PH (with no recovery)
+ 
+BEGIN 
+RAISERROR ('WARNING Before to continue you need to contact Jabil DBA to add Traceability database IN AlwaysOn Avaibility Group', 11, 1);
+END 
+ 
+-- Create publisher AG "TraceabilityPub_AG" Using GUI (Join Only). 
+-- I did not script out this on-purpose to show that this part can be done with GUI, 
+-- you can surely use script to create publisher database AG. 
+-- Keep in mind, most of the Distributor database in AG part must be done with script, GUI doesn’t support it yet.
+-- 1. Primary replica: BFRDT2CLU011PH  (readable)
+-- 2. Secondary replica: BFRDT1CLU011PH  (readable)
+-- 3. Database: Traceability
+ 
+ -- Check all secondary replicas have replication feature installed --
+:CONNECT Publisher A  -U Distributor_admin -P $123Bollore!
+USE master;
+GO
+DECLARE @installed int;
+EXEC @installed = sys.sp_MS_replication_installed;
+SELECT @installed;
+-- Return 1 is installed
+ 
+ 
+-- SECTION 7 ---- ***CONFIGURE THE REDIRECT PUBLISHER***
+-- on paimary distributor replicas BFRDT1CLU069VM\REPLI, 
+-- add publisher redirect by using publsher database ag listener TraceabilityPubDist
+:CONNECT Distributor A
+USE distribution
+GO
+ 
+EXEC sys.sp_redirect_publisher
+@original_publisher = 'BFRDT1CLU070VM\ARIANEREP',
+@publisher_db = 'ARIANEREP',
+@redirected_publisher = 'BFRCSICLU070AG,50007'
+GO
+ CONNECT Distributor B
+EXEC sys.sp_redirect_publisher
+@original_publisher = 'BFRDT2CLU070VM\ARIANEREP',
+@publisher_db = 'ARIANEREP',
+@redirected_publisher = 'BFRCSICLU070AG,50007'
+GO
+ 
+
+-- check and validate all publisher replicas (must be on primary distributor replica)
+/*
+Notes: sp_validate_replica_hosts_as_publishers is an extention of sp_validate_redirected_publisher.
+All publisher's replica must be readable/accessible to get them verified,
+Otherwise, the validation will fail with error msg 21899.
+*/
+:CONNECT Distributor A -U Distributor_admin -P $123Bollore!
+USE distribution;
+GO
+DECLARE @redirected_publisher sysname;
+EXEC sys.sp_validate_replica_hosts_as_publishers
+@original_publisher = 'Publisher A',
+@publisher_db = 'DB_Name',
+@redirected_publisher = @redirected_publisher output;
+ 
+PRINT @redirected_publisher
+ 
+
+-- alternatively, check and validate with sp_validate_redirected_publisher (must be on primary distributor replica)
+:CONNECT Distributor B   -U Distributor_admin -P $123Bollore!
+USE Distribution_B;
+GO
+DECLARE @redirected_publisher sysname;
+EXEC sys.sp_validate_redirected_publisher
+@original_publisher = 'Publisher B',
+@publisher_db = 'Db_name',
+@redirected_publisher = @redirected_publisher output;
+select @redirected_publisher as redirect_publisher
+ 
+-- or maybe simply use query to check redirect directly, result looks good too
+-- this check doesn't guarentee all secondaries are accessible, only check its meta data
+:CONNECT Distributor A -U Distributor_admin -P $123Bollore!
+select @@servername,* from Distribution_B.[dbo].[MSredirected_publishers]
+GO
+:CONNECT Distributor B -U Distributor_admin -P $123Bollore!
+select @@servername,* from Distribution_B.[dbo].[MSredirected_publishers]
+/*
+-- result looks good as below, expalin the result below --
+ 
+original_publisher    publisher_db    redirected_publisher
+----------------------------------------------------------
+Publisher A      Traceability            LISTEN_Publisher
+Publisher B      Traceability            LISTEN_Publisher
+*/
+ 
+
+-- check the distributor and publisher relationship in Distribution_B db, the result looks good too
+:CONNECT Distributor A  -U Distributor_admin -P $123Bollore!
+sp_helpdistpublisher
+ 
+
+-------------------------------PUBLISHER IN AG CONFIGURATION COMPLETED----------------------------------------
+ 
+
+---------------------------NOW, BOTH DISTRIBUTOR AND PUBLISHER ARE IN AG -------------------------------------
+ 
+
+--------------------------------------NOW TEST THE WHOLE THING------------------------------------------------
+ 
+-- Test the replication behavior with both Publisher and Distributor in AGs with trace token in replication monitor--
+  
+-- ***Failover Distributor AG and Test the above table update again*** --
+ 
+--check the subscriber database result
+--it may take a while, eventually you will see logreader parse new log and distrib send tx/cmd over to the subscriber
+ 
+
+-- Default behavior and how TF1448 works –- refer to https://docs.microsoft.com/en-us/sql/t-sql/database-console-commands/dbcc-traceon-trace-flags-transact-sql?view=sql-server-2017
+ -- IF only AG is on asynchrone mode
+ 
+
+ 
+
+
+------------------------------------END - CONFIGURATION TEST COMPLETED HERE - END-----------------------------------------------
+ 
