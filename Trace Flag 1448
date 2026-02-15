@@ -1,0 +1,45 @@
+# SQL Server Replication with Always On Availability Groups  
+## Enabling Trace Flag 1448 for Proper Log Reader Operation
+
+When using **Transactional Replication** together with **Always On Availability Groups**, SQL Server requires a specific configuration to ensure that the **Log Reader Agent** can continue to extract replication commands after a failover.
+
+By default, the Log Reader Agent can only read the transaction log on the **primary replica**.  
+If a failover occurs, or if the primary becomes temporarily unavailable, replication may fail with errors such as:
+
+- "The process could not execute 'sp_replcmds' on the database"
+- "Cannot execute replication procedures on a secondary replica"
+- "Database is not writable"
+
+To avoid these issues, SQL Server provides **Trace Flag 1448**, which allows the Log Reader Agent to read the transaction log from a **secondary replica** when necessary.
+
+---
+
+## 🔧 Why Trace Flag 1448 Is Required
+
+Trace Flag **1448** enables the Log Reader Agent to continue reading the transaction log even when:
+
+- The primary replica is unavailable  
+- A failover has occurred  
+- The secondary replica temporarily becomes the log source  
+
+This ensures that replication remains functional and avoids interruptions in data distribution.
+
+---
+
+##  Where to Enable Trace Flag 1448
+
+Trace Flag 1448 must be enabled **only on the Publisher instance**, because this is where the **Log Reader Agent** runs.
+
+| SQL Server Role | Enable TF 1448? | Reason |
+|-----------------|-----------------|--------|
+| **Publisher**   | ✅ Yes          | Log Reader Agent reads the transaction log here |
+| **Distributor** | ❌ No           | Does not read the log; only stores commands |
+| **Subscriber**  | ❌ No           | Only receives replicated data |
+
+---
+
+## 🛠️ How to Enable Trace Flag 1448
+
+### Permanent activation (recommended)
+Add the following startup parameter in SQL Server Configuration Manager:
+
